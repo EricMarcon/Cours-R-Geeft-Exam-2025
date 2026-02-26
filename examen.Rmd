@@ -1,0 +1,372 @@
+---
+title: "Examen R-Stats Geeft"
+author: "Votre nom"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    number_sections: true
+    toc: true
+    toc_float: true
+---
+
+
+# Déroulement de l'examen
+
+Vous travaillerez de 9h15 à 12h30 au plus tard.
+Vous aurez accès au cours, à l'internet... 
+La seule exigence est que vous n'utilisiez pas d'aide extérieure.
+
+Vous devrez répondre aux questions dans ce fichier en ajoutant du texte et du code.
+
+> Utilisez ce format pour le texte de vos réponses (sautez une ligne avant) et ajoutez le code dans des bouts de code standard:
+```{r}
+# Code
+```
+> Commencez chaque paragraphe par `> ` et tricotez souvent.
+
+
+Vous devez répondre aussi clairement que possible, en rédigeant vos réponses.
+Votre code doit être facile à lire, avec des commentaires quand c'est utile, formaté correctement (attention aux espaces, aux indentations, à la clarté des noms des objets, etc.).
+
+A la fin de votre travail, envoyez le fichier examen.Rmd à [eric.marcon@agroparistech.fr](mailto:eric.marcon@agroparistech.fr?subject=Examen R-Stats Geeft)
+
+
+Les données nécessaires se trouvent dans le sous-dossier `data`.
+
+L'examen comporte plusieurs questions à traiter :
+
+- Une régression du nombre d'espèces en fonction de la surface pour tester la relation d'Arrhenius,
+- Une ACP sur le climat de villes du monde entier,
+- Un exercice de programmation avec R estimer le nombre d'espèces d'une communauté.
+
+
+
+# Relation d'Arrhenius
+
+La [relation d'Arrhenius](https://ericmarcon.github.io/MesuresBioDiv2/diversit%C3%A9-r%C3%A9gionale.html) (1921) prévoit que le nombre d'espèces d'un écosystème augmente avec sa surface à la puissance $z$ selon l'équation 
+$$S(A) = c A^z$$
+où $S(A)$ est le nombre d'espèces observées sur la surface $A$, $c$ est une constante qui dépend des écosystèmes et du taxon considéré, et $z$ est le paramètre d'intérêt.
+La valeur de $z$ a fait l'objet d'une abondance littérature : la valeur théorique est $0,26$ (Preston, 1962) pour des îles de taille variable.
+
+Les données disponibles (Johnson et Simberloff, 1974) sont le nombre d'espèces de plantes vasculaires (`species`) pour 42 îles britanniques en fonction de différents prédicteurs, incluant la surface de l'île en km^2^ (`area`).
+Elles se trouvent dans le fichier `britain_species.csv` (attention, c'est un fichier américain).
+
+> Lecture (et affichage) des données :
+
+```{r}
+library("tidyverse")
+(britain_species <- read_csv("data/britain_species.csv"))
+```
+
+
+## Modèle non logarithmique
+
+Estimez le modèle de base, dans lequel la variable explicative (créez-la) est $A^{0.26}$.
+Attention : son ordonnée à l'origine est obligatoirement nulle.
+
+Effectuez les vérifications des hypothèses, faites des figures, discutez.
+
+> La variable `a_026` est ajoutée au tableau de données :
+```{r}
+britain_species |> 
+  mutate(a_026 = area^0.26) ->
+  britain_species_a026
+```
+
+> Aperçu de la relation :
+
+```{r}
+britain_species_a026 |> 
+  ggplot(aes(x = a_026, y = species)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+> Le modèle est le suivant :
+
+```{r}
+britain_species_lm <- lm(species ~ 0 + a_026, data = britain_species_a026)
+summary(britain_species_lm)
+```
+
+> Vérification des hypothèses :
+Le point 6, la Grande Bretagne entière, pose problème parce que son erreur est grande.
+
+```{r}
+plot(britain_species_lm, which = 1)
+```
+
+```{r}
+plot(britain_species_lm, which = 2)
+```
+
+> Les résidus sont approximativement normaux mais le point 6 à nouveau, comme le point 41, pose problème.
+Le test de Shapiro ne rejette pas la normalité.
+
+```{r}
+shapiro.test(residuals(britain_species_lm))
+```
+
+> L'effet de levier du point 6 est disproportionné : comme il se trouve loin du reste du nuage de points, il tire la régression à lui seul.
+
+```{r}
+plot(britain_species_lm, which = 5)
+```
+
+> En conclusion, le modèle respecte plus ou moins les hypothèses.
+Le seul paramètre est la pente de la droite, égale à 85 environ (valeur non interprétable facilement parce que la surface est à la puissance 0,26).
+La Grande-Bretagne entière a un effet de levier très grand, qui met en doute la robustesse du résultat.
+
+
+## Modèle logarithmique
+
+Transformez le modèle original (où $z$ n'est pas fixé) en en prenant le logarithme et recommencez.
+Quel est l'intérêt de cette transformation ?
+
+> La transformation logarithmique 
+
+$\ln(S) = \beta_0 + \beta_1 \ln(A)$ 
+
+> permet d'estimer z au lieu de fixer sa valeur. 
+
+```{r}
+britain_species |> 
+  mutate(species_log = log(species), area_log = log(area)) ->
+  britain_species_log
+
+britain_species_log |> 
+  ggplot(aes(x = area_log, y = species_log)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+> D'autre part, elle étale les petites valeurs et rapproche la Grande Bretagne du reste du nuage de points, ce qui limite son effet de levier.
+
+Effectuez les vérifications des hypothèses, faites des figures, discutez le résultat.
+
+> Le modèle est le suivant :
+
+```{r}
+britain_species_loglm <- lm(species_log ~ area_log, data = britain_species_log)
+summary(britain_species_loglm)
+```
+> Vérification des hypothèses :
+Les résidus sont maintenant homogènes.
+
+```{r}
+plot(britain_species_loglm, which = 1)
+```
+
+```{r}
+plot(britain_species_loglm, which = 2)
+```
+
+> Le test de Shapiro rejette maintenant l'hypothèse de normalité.
+L'estimation de z sera correcte mais pas son intervalle de confiance.
+L'alternative est d'effectuer une régression sur les rangs mais la valeur de z ne sera pas utilisable.
+
+```{r}
+shapiro.test(residuals(britain_species_loglm))
+```
+
+> L'effet de levier du point 6 reste grand mais sa distance de Cook est petite : il influe beaucoup sur la régression mais ne perturbe pas son résultat : son résidu est presque nul.
+
+```{r}
+plot(britain_species_loglm, which = 5)
+```
+
+> La valeur de z finalement retenue est 0,20.
+Quand la surface d'une île est multipliée par 10, le nombre d'espèces est multiplié par 2^0.2^, environ 1,6.
+
+
+## Covariables
+
+La théorie prévoit que la biodiversité diminue avec la latitude, l'altitude et la distance au continent (qui est ici la Grande-Bretagne).
+
+Ajoutez ces variables (non transformées) au modèle logarithmique, et sélectionnez le meilleur modèle selon le critère AIC.
+
+> Modèle complet :
+
+```{r}
+library("MASS")
+stepAIC(lm(species_log ~ area_log + dist_britain + latitude + elevation, data = britain_species_log))
+```
+> Le modèle retenu par la méthode stepwise contient le logarithme de la surface et la latitude.
+z est estimé à 0,19 et le nombre d'espèces diminue avec la latitude.
+
+Discutez.
+
+> L'AIC du modèle augmente énormément quand on retire la covariable latitude.
+On peut afficher le détail du modèle avec latitude pour le comparer au précédent.
+
+```{r}
+summary(lm(species_log ~ area_log + latitude, data = britain_species_log))
+```
+
+> La variance expliquée augmente beaucoup en ajoutant la latitude au modèle original : 72% au lieu de 48%
+La relation d'Arrhenius est définie pour des écosystèmes similaires, dont seule la taille varie.
+En Grande-Bretagne, la latitude est un déterminant important de la biodiversité : le climat varie énormément du nord au sud du pays.
+Après avoir contrôlé pour cette covariable essentielle, la relation d'Arrhenius est validée par les données, avec une puissance z égale à 0,19, inférieure à la valeur attendue.
+Une raison est peut-être que les surfaces disponibles pour les végétaux (non anthropisées) ne sont qu'une partie de la surface des îles : A est mal mesuré, et la perte de surface augmente avec la taille des îles (les petites îles sont inhabitées alors que la Grande-Bretagne entière est largement occupée par l'agriculture et l'urbanisation).
+L'étape suivante serait donc de préciser les mesures de surface.
+
+
+
+# Estimation de la richesse spécifique
+
+L'objectif de cet exercice est d'écrire une fonction qui accepte comme argument unique un vecteur d'abondances (nombres d'individus de plusieurs espèces) et renvoie le nombre d'espèces estimé.
+
+L'estimateur du jackknife (Burnham et Overton 1978, 1979) estime le nombre d'espèces totales d'une communauté comme le nombre d'espèces observées auquel s'ajoute le nombre d'espèces observées une seule fois (dit autrement, on manque autant d'espèces qu'on en a vues une seule fois).
+Par exemple, si l'inventaire est le suivant
+```{r}
+abondances <- c(5, 3, 1, 10, 1, 0)
+```
+
+alors le nombre d'espèces estimé est 7 (pensez à ne pas compter les espèces dont l'effectif est zéro).
+
+## Fonction
+
+Ecrivez une fonction que vous appelerez `jackknife()` qui renverra l'estimation décrite ci-dessus.
+
+> La fonction s'écrit :
+
+```{r}
+jackknife <- function(abondances) {
+  especes_observees <- sum(abondances > 0)
+  especes_non_observees <- sum(abondances == 1)
+  return(especes_observees + especes_non_observees)
+}
+```
+
+Testez-la avec le vecteur `abondances`.
+
+> Test de la fonction :
+
+```{r}
+jackknife(abondances)
+```
+
+## Données de Paracou
+
+L'inventaire de la parcelle 6 de Paracou est dans le fichier `Paracou6.csv`.
+C'est un fichier français.
+
+> Lecture (et affichage) des données :
+
+```{r}
+(paracou6 <- read_csv2("data/Paracou6.csv"))
+```
+
+
+Comptez le nombre d'individus par espèce et faites-en un vecteur que vous passerez à votre fonction jackknife pour estimer la richesse spécifique de la communauté dont la parcelle 6 est un échantillon.
+Vous aurez besoin de la fonction `pull()` pour transformer une colonne d'un tibble en vecteur.
+
+> Les espèces sont définies par le binome genre-espèce, à utiliser pour regrouper les arbres :
+
+```{r}
+paracou6 %>% 
+  # Regroupement des arbres par espèce
+  group_by(Genus, Species) %>% 
+  # Comptage
+  summarise(abondances = n()) -> abondances_paracou6
+# Affichage 
+abondances_paracou6
+```
+
+> 335 espèces sont inventoriées dans le jeu de données.
+Certaines sont mal déterminées ("Indet." dans le nom du genre ou de l'espèce) mais nous n'avons pas d'information pour les traiter différemment des autres.
+
+> La fonction jackknife est utlisée pour ajouter le nombre d'espèces vues une seule fois :
+
+```{r}
+abondances_paracou6 %>% 
+  # Extraction du vecteur des abondances
+  pull(abondances) %>% 
+  # Estimation de la richesse
+  jackknife()
+```
+> Le nombre d'espèces estimé est 433.
+
+
+
+# Climat des villes
+
+Le fichier `cities_climate.csv` contient des données climatiques tirées de WorldClim pour 49 grandes villes.
+
+Ce sont :
+
+- `t_mean`: Température moyenne annuelle.
+- `t_diu`: Variation journalière de température, différence moyenne entre la température maximale et minimale dans un même mois.
+- `t_sd`: Variation saisonnière de température, écart-type de la température moyenne entre les mois.
+- `t_max`: Température maximale du mois le plus chaud.
+- `t_min`: Température minimale du mois le plus froid.
+- `p_ann`: Précipitation annuelle.
+- `p_max`: Précipitation du mois le plus humide.
+- `p_min`: Précipitation du mois le plus sec.
+- `p_cv`: Coefficient de variation (ratio écart-type / moyenne) de la précipitation entre les mois.
+
+Toutes les températures sont en °C et toutes les variables de précipitation (sauf le coefficient de variation) sont en mm.
+
+La question à traiter est celle des composantes les plus importantes du climat.
+L'ACP centrée et réduite est la bonne méthode ici.
+
+- Lisez le fichier de données (attention : il est américain) et inspectez-le.
+
+> Lecture des données
+
+```{r}
+cities_climate <- read_csv("data/cities_climate.csv")
+```
+
+- la fonction `prcomp()` de *stats* a besoin d'un tableau avec des noms de ligne.
+Vous devez donc préparer les données :
+  - mettez de côté dans un vecteur les noms des villes,
+  - éliminez du dataframe les colonnes qui ne sont pas des variables climatiques (les 4 premières),
+  - nommez les lignes du dataframe : `rownames(nom_du_tableau) <- vecteur_des_noms_de_villes`.
+  
+```{r}
+# Nom des villes 
+villes <- cities_climate$city
+# Réduction du tableau
+cities_climate <- cities_climate[, -(1:4)]
+# Noms
+rownames(cities_climate) <- villes
+```
+
+Faites l'ACP :
+
+```{r}
+cities_climate_pca <- prcomp(cities_climate, scale. = TRUE)
+```
+
+- Affichez les valeurs propres, justifiez la sélection des deux premiers axes seulement,
+
+> Valeurs propres :
+
+```{r}
+library("factoextra")
+fviz_eig(cities_climate_pca)
+```
+
+> Les deux premières composantes principales résument la majorité de l'information (près de 70%).
+La troisième valeur propre est proche de la valeur moyenne en absence de structuration des données (1/8) : nous retiendrons seulement les deux premiers axes.
+
+- Faites un biplot et interprétez : quels sont les gradients importants et les villes intéressantes ?
+
+> Biplot :
+
+```{r}
+fviz_pca_biplot(cities_climate_pca, repel = TRUE)
+```
+
+> Le premier axe est généré par les variables `t_sd` (la continentalité), et `t_min` (température la plus froide) et `p_max` (précipitations maximales.).
+De la gauche vers la droite, le gradient va donc de tropical à continental.
+Le deuxième axe représente les variables "inverses", `t_max` et `p_min`, la variabilité des précipitations et dans une moindre mesure la température diurne.
+Les villes tropicales sont par exemple Mumbai et Abidjan.
+Les villes les plus continentales sont par exemple Moscou et Kaboul.
+
+> Du bas vers le haut, le gradient va d'un climat chaud (température moyenne et maximale élevées), avec des précipitations inégales, à un climat froid avec sans mois très sec.
+La tendance est moins nette sur l'axe 2 que sur l'axe 1.
+La ville de Singapour se distingue par des précipitations abondantes toute l'année (`p_ann`), avec un minimum élevé.
